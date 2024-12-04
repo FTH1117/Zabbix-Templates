@@ -1,0 +1,37 @@
+zabbix_export:
+  version: '5.4'
+  date: '2024-12-04T03:39:17Z'
+  groups:
+    -
+      uuid: a571c0d144b14fd4a87a9d9b2aa9fcd6
+      name: Templates/Applications
+  templates:
+    -
+      uuid: 245f69e853fa4f2aa6f9ec7663e73b46
+      template: 'DHCP Subnet Usage'
+      name: 'DHCP Subnet Usage'
+      groups:
+        -
+          name: Templates/Applications
+      discovery_rules:
+        -
+          uuid: 44f07c6bbee242f89e38349861fcd512
+          name: 'Kea Subnet Discovery'
+          key: kea.subnet.discovery
+          item_prototypes:
+            -
+              uuid: b6906e165a284121a17c7e2e524fd480
+              name: 'Subnet {#SUBNET_ADDRESS} Usage'
+              key: 'kea.subnet.usage[{#SUBNET_ID}]'
+              delay: 15m
+              trends: 90d
+              value_type: FLOAT
+              units: '%'
+              trigger_prototypes:
+                -
+                  uuid: 0607da4485624791a9312b06b611fff6
+                  expression: 'last(/DHCP Subnet Usage/kea.subnet.usage[{#SUBNET_ID}])>99'
+                  name: 'Subnet {#SUBNET_ADDRESS} High Usage'
+                  opdata: 'Current usage: {ITEM.LASTVALUE1}'
+                  priority: WARNING
+                  manual_close: 'YES'
