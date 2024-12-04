@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+import requests
+import json
+import re
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.SubjectAltNameWarning)
+
+# Replace with your Kea API endpoint and credentials if required
+KEA_API_URL = 'https://kea-master.celcomdigi:8001'
+
+def get_subnet_configs():
+    # Send config-get command to retrieve subnet configurations
+    config_data = {
+        "command": "config-get",
+        "service": [ "dhcp4" ],
+        "arguments": {}
+    }
+    response = requests.post(
+        KEA_API_URL,
+        headers={'Content-Type': 'application/json'},
+        data=json.dumps(config_data),
+        verify='/usr/lib64/kea/ssl/CA.pem'
+    )
+    response.raise_for_status()
+    response_json = response.json()
+    if isinstance(response_json, list):
+        response_data = response_json[0]
+    else:
+        response_data = response_json
+    subnet_configs = {}
+    if 'arguments' in response_data:
+        dhcp4_config = response_data['arguments']
+        if 'Dhcp4' in dhcp4_config and 'subnet4' in dhcp4_config['Dhcp4']:
+            for subnet in dhcp4_config['Dhcp4']['subnet4']:
+                subnet_id = subnet['id']
+                subnet_address = subnet['subnet']
+                subnet_configs[subnet_id] = subnet_address
+    return subnet_configs
+
+def get_subnet_usage():
+    headers = {'Content-Type': 'application/json'}
+    data = {
+        "command": "statistic-get-all",
+        "service": [ "dhcp4" ],
+        "arguments": {}
+    }
+    try:
+        # Get subnet configurations
+        subnet_configs = get_subnet_configs()
+
+        response = requests.post(
+            KEA_API_URL,
+            headers=headers,
+            data=json.dumps(data),
+            verify='/usr/lib64/kea/ssl/CA.pem'
+        )
+        response.raise_for_status()
+
+        response_json = response.json()
+
+        # Check if the response is a list or a dictionary
+        if isinstance(response_json, list):
+            response_data = response_json[0]
+        else:
+            response_data = response_json
+
+        if 'arguments' in response_data:
+            statistics = response_data['arguments']
+
+            # Initialize a dictionary to hold subnet statistics
+            subnet_stats = {}
+
+            # Process statistics to extract subnet data
+            for name, value_list in statistics.items():
+                # The value is a list of [value, timestamp]; we take the latest value
+                if isinstance(value_list, list) and len(value_list) > 0:
+                    latest_value = value_list[-1][0]
+                else:
+                    latest_value = 0
+
+                # Match statistics related to subnets
+                match = re.match(r'subnet\[(\d+)\]\.(.+)', name)
+                if match:
+                    subnet_id = int(match.group(1))
+                    stat_name = match.group(2)
+
+                    if subnet_id not in subnet_stats:
+                        subnet_stats[subnet_id] = {}
+
+                    subnet_stats[subnet_id][stat_name] = latest_value
+
+            # Prepare data for Zabbix
+            lld_data = {"data": []}
+            for subnet_id, stats in subnet_stats.items():
+                assigned_addresses = stats.get('assigned-addresses', 0)
+                total_addresses = stats.get('total-addresses', 0)
+                subnet_address = subnet_configs.get(subnet_id, 'Unknown')
+                usage_percent = (assigned_addresses / total_addresses) * 100 if total_addresses else 0
+
+                lld_data["data"].append({
+                    "{#SUBNET_ID}": subnet_id,
+                    "{#SUBNET_ADDRESS}": subnet_address,
+                    "{#USAGE_PERCENT}": usage_percent
+                })
+            print(json.dumps(lld_data))
+        else:
+            print("Error: 'arguments' not found in response.")
+            print("Response JSON:", response_json)
+    except requests.exceptions.RequestException as e:
+        print(f"Error connecting to Kea Control Agent: {e}")
+
+if __name__ == "__main__":
+    get_subnet_usage()
