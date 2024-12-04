@@ -1,0 +1,188 @@
+zabbix_export:
+  version: '5.4'
+  date: '2024-12-04T03:58:28Z'
+  groups:
+    -
+      uuid: a571c0d144b14fd4a87a9d9b2aa9fcd6
+      name: Templates/Applications
+  templates:
+    -
+      uuid: 8cf8f5d436e84ac29b7362d59c9c9479
+      template: 'DNS Server Monitoring Service Template'
+      name: 'DNS Server Monitoring Service Template'
+      description: |
+        Monitoring the services below:
+        1. unbound.service
+        2. frr.service
+        3. ping2http.service
+        4. pdns.service
+        5. mariadb.service
+        
+        Get systemd units metrics from plugin for the zabbix-agent2.
+          1. Setup and configure zabbix-agent2 compiled with the Systemd monitoring plugin.
+          2. Set filters with macros if you want to override default filter parameters.
+      groups:
+        -
+          name: Templates/Applications
+      items:
+        -
+          uuid: fb66c6e9e00b401b994c58682175a62a
+          name: 'Unbound Message cache memory'
+          key: 'unbound.mem[cache.message]'
+          value_type: FLOAT
+          units: B
+        -
+          uuid: f0d2e0e8ee38487ca6093c7144bbdc35
+          name: 'Unbound RRset cache memory'
+          key: 'unbound.mem[cache.rrset]'
+          value_type: FLOAT
+          units: B
+        -
+          uuid: 460d3f9d4914489d889da5beacb5f992
+          name: 'Unbound Iterator module memory'
+          key: 'unbound.mem[mod.iterator]'
+          value_type: FLOAT
+          units: B
+        -
+          uuid: a9389af9aac541c1b04d75fa548478ed
+          name: 'Unbound Validator module and key cache memory'
+          key: 'unbound.mem[mod.validator]'
+          value_type: FLOAT
+          units: B
+        -
+          uuid: f01055d9017540d986bace2744853288
+          name: 'Unbound Total memory'
+          key: 'unbound.mem[total.sbrk]'
+          value_type: FLOAT
+          units: B
+      discovery_rules:
+        -
+          uuid: 30552915860f4afab1ee4ae7802b09bc
+          name: 'Service Monitoring - Systemd'
+          key: 'systemd.unit.discovery[service]'
+          filter:
+            evaltype: AND
+            conditions:
+              -
+                macro: '{#UNIT.NAME}'
+                value: '{$SYSTEMD.NAME.SERVICE.MATCHES}'
+                formulaid: A
+              -
+                macro: '{#UNIT.NAME}'
+                value: '{$SYSTEMD.NAME.SERVICE.MATCHES.EXCLUDE}'
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
+          lifetime: 7d
+          item_prototypes:
+            -
+              uuid: d03c4e5534a443f6a07e66eeb0ec78ac
+              name: '{#UNIT.NAME}: Active state'
+              type: DEPENDENT
+              key: 'systemd.service.active_state["{#UNIT.NAME}"]'
+              delay: '0'
+              history: 7d
+              description: 'State value that reflects whether the unit is currently active or not. The following states are currently defined: "active", "reloading", "inactive", "failed", "activating", and "deactivating".'
+              valuemap:
+                name: 'Unit Active State'
+              preprocessing:
+                -
+                  type: JSONPATH
+                  parameters:
+                    - $.ActiveState.state
+              master_item:
+                key: 'systemd.unit.get["{#UNIT.NAME}"]'
+              tags:
+                -
+                  tag: Application
+                  value: 'Systemd service: {#UNIT.NAME}'
+              trigger_prototypes:
+                -
+                  uuid: ae243a2a8da14fc2891f23e7f863a934
+                  expression: 'last(/DNS Server Monitoring Service Template/systemd.service.active_state["{#UNIT.NAME}"])<>1'
+                  name: '{#UNIT.NAME}: Service is not running'
+                  opdata: 'Current status: {ITEM.LASTVALUE}'
+                  priority: HIGH
+                  manual_close: 'YES'
+            -
+              uuid: deb99938e37a4883b96c3c7a50676cd3
+              name: '{#UNIT.NAME}: Get unit info'
+              key: 'systemd.unit.get["{#UNIT.NAME}"]'
+              history: '0'
+              trends: '0'
+              value_type: TEXT
+              description: |
+                Returns all properties of a systemd service unit.
+                 Unit description: {#UNIT.DESCRIPTION}.
+              tags:
+                -
+                  tag: Application
+                  value: 'Zabbix raw items'
+      macros:
+        -
+          macro: '{$SYSTEMD.NAME.SERVICE.MATCHES}'
+          value: (unbound.service|frr.service|ping2http.service|pdns.service|mariadb.service)
+          description: 'Filter of systemd service units by name'
+        -
+          macro: '{$SYSTEMD.NAME.SERVICE.MATCHES.EXCLUDE}'
+          value: heartbeat-failed@frr.service
+      valuemaps:
+        -
+          uuid: 5c1c51d2ab65473194b9d6e8afa76699
+          name: 'Unit Active State'
+          mappings:
+            -
+              value: '0'
+              newvalue: unknown
+            -
+              value: '1'
+              newvalue: active
+            -
+              value: '2'
+              newvalue: reloading
+            -
+              value: '3'
+              newvalue: inactive
+            -
+              value: '4'
+              newvalue: failed
+            -
+              value: '5'
+              newvalue: activating
+            -
+              value: '6'
+              newvalue: deactivating
+  graphs:
+    -
+      uuid: 76c62bdc5730456ba8bf39eaa2c55fe0
+      name: 'Unbound memory usage'
+      graph_items:
+        -
+          sortorder: '1'
+          color: 199C0D
+          item:
+            host: 'DNS Server Monitoring Service Template'
+            key: 'unbound.mem[total.sbrk]'
+        -
+          sortorder: '2'
+          color: F63100
+          item:
+            host: 'DNS Server Monitoring Service Template'
+            key: 'unbound.mem[mod.iterator]'
+        -
+          sortorder: '3'
+          color: 2774A4
+          item:
+            host: 'DNS Server Monitoring Service Template'
+            key: 'unbound.mem[cache.message]'
+        -
+          sortorder: '4'
+          color: F7941D
+          item:
+            host: 'DNS Server Monitoring Service Template'
+            key: 'unbound.mem[cache.rrset]'
+        -
+          sortorder: '5'
+          color: FC6EA3
+          item:
+            host: 'DNS Server Monitoring Service Template'
+            key: 'unbound.mem[mod.validator]'
