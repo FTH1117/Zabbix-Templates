@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+import sys
+import requests
+import json
+import urllib3
+import re
+
+# Disable SSL warnings (optional)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+urllib3.disable_warnings(urllib3.exceptions.SubjectAltNameWarning)
+
+# Kea API endpoint and SSL certificate path
+KEA_API_URL = 'https://kea-master.celcomdigi:8001'
+CA_CERT_PATH = '/usr/lib64/kea/ssl/CA.pem'
+
+def get_subnet_usage(subnet_id):
+    headers = {'Content-Type': 'application/json'}
+    data = {
+        "command": "statistic-get-all",
+        "service": [ "dhcp4" ],
+        "arguments": {}
+    }
+
+    try:
+        response = requests.post(
+            KEA_API_URL,
+            headers=headers,
+            data=json.dumps(data),
+            verify=CA_CERT_PATH
+        )
+        response.raise_for_status()
+        response_json = response.json()
+
+        # Check if the response is a list or a dictionary
+        if isinstance(response_json, list):
+            response_data = response_json[0]
+        else:
+            response_data = response_json
+
+        if 'arguments' in response_data:
+            statistics = response_data['arguments']
+
+            assigned_addresses = 0
+            total_addresses = 0
+
+            # Process statistics to extract data for the specific subnet
+            for name, value_list in statistics.items():
+                # The value is a list of [value, timestamp]; we take the latest value
+                if isinstance(value_list, list) and len(value_list) > 0:
+                    latest_value = value_list[-1][0]
+                else:
+                    latest_value = 0
+
+                # Match statistics related to the specified subnet and pool
+                match = re.match(rf'subnet\[{subnet_id}\]\.pool\[\d+\]\.(.+)', name)
+                if match:
+                    stat_name = match.group(1)
+
+                    # Debug: Print the statistic being processed
+                    # print(f"Processing {name}: {latest_value}")
+
+                    if stat_name == 'assigned-addresses':
+                        assigned_addresses += int(latest_value)
+                    elif stat_name == 'total-addresses':
+                        total_addresses += int(latest_value)
+
+            # Calculate usage percentage
+            if total_addresses > 0:
+                usage_percent = (assigned_addresses / total_addresses) * 100
+                print(usage_percent)
+            else:
+                print(0.0)
+        else:
+            print("Error: 'arguments' not found in response.")
+            print("Response JSON:", response_json)
+    except Exception as e:
+        print(f"Error: {e}")
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: subnet_usage <subnet_id>")
+    else:
+        subnet_id = sys.argv[1]
+        get_subnet_usage(subnet_id)
